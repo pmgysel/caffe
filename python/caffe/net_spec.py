@@ -32,7 +32,7 @@ def param_name_dict():
     # get all parameter names (typically underscore case) and corresponding
     # type names (typically camel case), which contain the layer names
     # (note that not all parameters correspond to layers, but we'll ignore that)
-    param_names = [s for s in dir(layer) if s.endswith('_param')]
+    param_names = [f.name for f in layer.DESCRIPTOR.fields if f.name.endswith('_param')]
     param_type_names = [type(getattr(layer, s)).__name__ for s in param_names]
     # strip the final '_param' or 'Parameter'
     param_names = [s[:-len('_param')] for s in param_names]
@@ -103,6 +103,10 @@ class Function(object):
 
     def __init__(self, type_name, inputs, params):
         self.type_name = type_name
+        for index, input in enumerate(inputs):
+            if not isinstance(input, Top):
+                raise TypeError('%s input %d is not a Top (type is %s)' %
+                                (type_name, index, type(input)))
         self.inputs = inputs
         self.params = params
         self.ntop = self.params.get('ntop', 1)

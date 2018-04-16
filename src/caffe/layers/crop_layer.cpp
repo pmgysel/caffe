@@ -15,8 +15,7 @@ namespace caffe {
 template <typename Dtype>
 void CropLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
     const vector<Blob<Dtype>*>& top) {
-  // All logic that depends only on the number of dimensions is here,
-  // the rest is in Reshape because it depends on Blob size.
+  // LayerSetup() handles the number of dimensions; Reshape() handles the sizes.
   // bottom[0] supplies the data
   // bottom[1] supplies the size
   const CropParameter& param = this->layer_param_.crop_param();
@@ -40,45 +39,48 @@ void CropLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
   int input_dim = bottom[0]->num_axes();
   const int start_axis = bottom[0]->CanonicalAxisIndex(param.axis());
 
-  // initialize all offsets to 0
-  offsets = vector<int>(input_dim, 0);
-  // initialize new shape to bottom[0]
+  // Initialize offsets to 0 and the new shape to the current shape of the data.
   vector<int> new_shape(bottom[0]->shape());
+  vector<int> offsets_shape(1, input_dim);
+  offsets.Reshape(offsets_shape);
+  int* offset_data = offsets.mutable_cpu_data();
 
-  // apply crops
+  // Determine crop offsets and the new shape post-crop.
   for (int i = 0; i < input_dim; ++i) {
     int crop_offset = 0;
-    int new_size    = bottom[0]->shape(i);
+    int new_size = bottom[0]->shape(i);
     if (i >= start_axis) {
       new_size = bottom[1]->shape(i);
-
       if (param.offset_size() == 1) {
-        // if only one crop value is supplied, crop all dimensions after axis
-        // by this crop value
+        // If only one offset is given, all crops have the same offset.
         crop_offset = param.offset(0);
       } else if (param.offset_size() > 1) {
-        // crop values specified must be equal to the number of dimensions
-        // following axis
+        // For several offsets, the number of offsets must be equal to the
+        // number of dimensions to crop, that is dimensions after the axis.
         crop_offset = param.offset(i - start_axis);
       }
+      // Check that the crop and offset are within the dimension's bounds.
+      CHECK_GE(bottom[0]->shape(i) - crop_offset, bottom[1]->shape(i))
+          << "the crop for dimension " << i << " is out-of-bounds with "
+          << "size " << bottom[1]->shape(i) << " and offset " << crop_offset;
     }
-    // Check that the image we are cropping minus the margin is bigger
-    // than the destination image.
-    CHECK_GE(bottom[0]->shape(i) - crop_offset,
-             bottom[1]->shape(i))
-        << "invalid crop parameters in dimension: " << i;
-    // Now set new size and offsets
     new_shape[i] = new_size;
-    offsets[i] = crop_offset;
+    offset_data[i] = crop_offset;
   }
   top[0]->Reshape(new_shape);
+  // Compute strides
+  src_strides_.Reshape(offsets_shape);
+  dest_strides_.Reshape(offsets_shape);
+  for (int i = 0; i < input_dim; ++i) {
+    src_strides_.mutable_cpu_data()[i] = bottom[0]->count(i + 1, input_dim);
+    dest_strides_.mutable_cpu_data()[i] = top[0]->count(i + 1, input_dim);
+  }
 }
 
-// recursive copy function
 template <typename Dtype>
 void CropLayer<Dtype>::crop_copy(const vector<Blob<Dtype>*>& bottom,
              const vector<Blob<Dtype>*>& top,
-             const vector<int>& offsets,
+             const int* offsets,
              vector<int> indices,
              int cur_dim,
              const Dtype* src_data,
@@ -92,28 +94,26 @@ void CropLayer<Dtype>::crop_copy(const vector<Blob<Dtype>*>& bottom,
                 src_data, dest_data, is_forward);
     }
   } else {
-    // We are at the last dimensions, which is stored continously in memory
-    for (int i = 0; i < top[0]->shape(cur_dim); ++i) {
-      // prepare index vector reduced(red) and with offsets(off)
-      std::vector<int> ind_red(cur_dim, 0);
-      std::vector<int> ind_off(cur_dim+1, 0);
-      for (int j = 0; j < cur_dim; ++j) {
-          ind_red[j] = indices[j];
-          ind_off[j] = indices[j] + offsets[j];
-      }
-      ind_off[cur_dim] = offsets[cur_dim];
-      // do the copy
-      if (is_forward) {
-        caffe_copy(top[0]->shape(cur_dim),
-            src_data + bottom[0]->offset(ind_off),
-            dest_data + top[0]->offset(ind_red));
-      } else {
-        // in the backwards pass the src_data is top_diff
-        // and the dest_data is bottom_diff
-        caffe_copy(top[0]->shape(cur_dim),
-            src_data + top[0]->offset(ind_red),
-            dest_data + bottom[0]->offset(ind_off));
-      }
+    // We are at the last dimensions, which is stored continuously in memory
+    // prepare index vector reduced(red) and with offsets(off)
+    std::vector<int> ind_red(cur_dim, 0);
+    std::vector<int> ind_off(cur_dim+1, 0);
+    for (int j = 0; j < cur_dim; ++j) {
+      ind_red[j] = indices[j];
+      ind_off[j] = indices[j] + offsets[j];
+    }
+    ind_off[cur_dim] = offsets[cur_dim];
+    // do the copy
+    if (is_forward) {
+      caffe_copy(top[0]->shape(cur_dim),
+          src_data + bottom[0]->offset(ind_off),
+          dest_data + top[0]->offset(ind_red));
+    } else {
+      // in the backwards pass the src_data is top_diff
+      // and the dest_data is bottom_diff
+      caffe_copy(top[0]->shape(cur_dim),
+          src_data + top[0]->offset(ind_red),
+          dest_data + bottom[0]->offset(ind_off));
     }
   }
 }
@@ -124,7 +124,8 @@ void CropLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
   std::vector<int> indices(top[0]->num_axes(), 0);
   const Dtype* bottom_data = bottom[0]->cpu_data();
   Dtype* top_data = top[0]->mutable_cpu_data();
-  crop_copy(bottom, top, offsets, indices, 0, bottom_data, top_data, true);
+  crop_copy(bottom, top, offsets.cpu_data(), indices, 0, bottom_data, top_data,
+      true);
 }
 
 template <typename Dtype>
@@ -136,7 +137,8 @@ void CropLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
   if (propagate_down[0]) {
     caffe_set(bottom[0]->count(), static_cast<Dtype>(0), bottom_diff);
     std::vector<int> indices(top[0]->num_axes(), 0);
-    crop_copy(bottom, top, offsets, indices, 0, top_diff, bottom_diff, false);
+    crop_copy(bottom, top, offsets.cpu_data(), indices, 0, top_diff,
+        bottom_diff, false);
   }
 }
 

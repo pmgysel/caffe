@@ -1,19 +1,88 @@
 version: 1.0.{build}
 clone_folder: c:\projects\caffe
+environment:
+  matrix:
+    - MSVC_VERSION: 14
+      WITH_NINJA: 0
+      CMAKE_CONFIG: Release
+      CMAKE_BUILD_SHARED_LIBS: 0
+      PYTHON_VERSION: 3
+      WITH_CUDA: 0
+
+    - MSVC_VERSION: 14
+      WITH_NINJA: 0
+      CMAKE_CONFIG: Release
+      CMAKE_BUILD_SHARED_LIBS: 0
+      PYTHON_VERSION: 2
+      WITH_CUDA: 0
+
+    - MSVC_VERSION: 14
+      WITH_NINJA: 0
+      CMAKE_CONFIG: Debug
+      CMAKE_BUILD_SHARED_LIBS: 0
+      PYTHON_VERSION: 2
+      WITH_CUDA: 0
+
+    - MSVC_VERSION: 14
+      WITH_NINJA: 1
+      CMAKE_CONFIG: Release
+      CMAKE_BUILD_SHARED_LIBS: 0
+      PYTHON_VERSION: 2
+      WITH_CUDA: 0
+
+    - MSVC_VERSION: 14
+      WITH_NINJA: 1
+      CMAKE_CONFIG: Debug
+      CMAKE_BUILD_SHARED_LIBS: 0
+      PYTHON_VERSION: 2
+      WITH_CUDA: 0
+      
+    - MSVC_VERSION: 14
+      WITH_NINJA: 1
+      CMAKE_CONFIG: Release
+      CMAKE_BUILD_SHARED_LIBS: 0
+      PYTHON_VERSION: 2
+      WITH_CUDA: 1
+      
+    - MSVC_VERSION: 14
+      WITH_NINJA: 1
+      CMAKE_CONFIG: Release
+      CMAKE_BUILD_SHARED_LIBS: 0
+      PYTHON_VERSION: 3
+      WITH_CUDA: 1        
+
+    - MSVC_VERSION: 12
+      WITH_NINJA: 0
+      CMAKE_CONFIG: Release
+      CMAKE_BUILD_SHARED_LIBS: 0
+      PYTHON_VERSION: 2
+      WITH_CUDA: 0
+
+    - MSVC_VERSION: 12
+      WITH_NINJA: 0
+      CMAKE_CONFIG: Debug
+      CMAKE_BUILD_SHARED_LIBS: 0
+      PYTHON_VERSION: 2
+      WITH_CUDA: 0
+
+    - MSVC_VERSION: 12
+      WITH_NINJA: 1
+      CMAKE_CONFIG: Release
+      CMAKE_BUILD_SHARED_LIBS: 0
+      PYTHON_VERSION: 2
+      WITH_CUDA: 0
+
+    - MSVC_VERSION: 12
+      WITH_NINJA: 1
+      CMAKE_CONFIG: Debug
+      CMAKE_BUILD_SHARED_LIBS: 0
+      PYTHON_VERSION: 2
+      WITH_CUDA: 0
+
 build_script:
 - cmd: >-
-    cd C:\projects\caffe\windows
+    call scripts\build_win.cmd
 
-    copy CommonSettings.props.example CommonSettings.props
-
-    nuget restore Caffe.sln -PackagesDirectory ..\..\NugetPackages -ConfigFile nuget.config
-
-    set PATH=%PATH:nuget=hello%
-
-    msbuild Caffe.sln /m /v:m /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll" /p:Configuration=Debug;CpuOnlyBuild=true;UseCuDNN=false
-
-    msbuild Caffe.sln /m /v:m /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll" /p:Configuration=Release;CpuOnlyBuild=true;UseCuDNN=false;WholeProgramOptimization=false
-
-    cd ..
-
-    Build\x64\Release\test_all.exe --gtest_filter=-*TestTimer*
+artifacts:
+  - path: build\install
+    name: caffe

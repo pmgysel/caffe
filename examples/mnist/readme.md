@@ -8,7 +8,7 @@ priority: 1
 
 # Training LeNet on MNIST with Caffe
 
-We will assume that you have Caffe successfully compiled. If not, please refer to the [Installation page](/installation.html). In this tutorial, we will assume that your Caffe installation is located at `CAFFE_ROOT`.
+We will assume that you have Caffe successfully compiled. If not, please refer to the [Installation page](/installation.html). In this tutorial, we will assume that your Caffe installation is located at `CAFFE_ROOT`. On Windows use the powershell (`.ps1`) instead of the bash (`.sh`) scripts.
 
 ## Prepare Datasets
 
@@ -248,7 +248,7 @@ These messages tell you the details about each layer, its connections and its ou
     I1203 solver.cpp:36] Solver scaffolding done.
     I1203 solver.cpp:44] Solving LeNet
 
-Based on the solver setting, we will print the training loss function every 100 iterations, and test the network every 1000 iterations. You will see messages like this:
+Based on the solver setting, we will print the training loss function every 100 iterations, and test the network every 500 iterations. You will see messages like this:
 
     I1203 solver.cpp:204] Iteration 100, lr = 0.00992565
     I1203 solver.cpp:66] Iteration 100, loss = 0.26044

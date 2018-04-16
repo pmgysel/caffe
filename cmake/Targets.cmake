@@ -1,7 +1,16 @@
 ################################################################################################
 # Defines global Caffe_LINK flag, This flag is required to prevent linker from excluding
 # some objects which are not addressed directly but are registered via static constructors
-macro(caffe_set_caffe_link)
+macro(caffe_set_caffe_link)  
+  if(MSVC AND CMAKE_GENERATOR MATCHES Ninja)        
+    foreach(_suffix "" ${CMAKE_CONFIGURATION_TYPES})
+      if(NOT _suffix STREQUAL "")
+        string(TOUPPER _${_suffix} _suffix)
+      endif()
+      set(CMAKE_CXX_FLAGS${_suffix} "${CMAKE_CXX_FLAGS${_suffix}} /FS")
+      set(CMAKE_C_FLAGS${_suffix} "${CMAKE_C_FLAGS${_suffix}} /FS")              
+    endforeach()
+  endif()
   if(BUILD_SHARED_LIBS)
     set(Caffe_LINK caffe)
   else()
@@ -9,6 +18,8 @@ macro(caffe_set_caffe_link)
       set(Caffe_LINK -Wl,-force_load caffe)
     elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
       set(Caffe_LINK -Wl,--whole-archive caffe -Wl,--no-whole-archive)
+    elseif(MSVC)
+      set(Caffe_LINK caffe)
     endif()
   endif()
 endmacro()
@@ -52,9 +63,18 @@ endfunction()
 #   caffe_pickup_caffe_sources(<root>)
 function(caffe_pickup_caffe_sources root)
   # put all files in source groups (visible as subfolder in many IDEs)
+  set(caffe_export_hdr_in ${PROJECT_SOURCE_DIR}/cmake/Templates/export.hpp.in)
+  set(caffe_export_hdr ${PROJECT_BINARY_DIR}/caffe/export.hpp)  
+  set(caffe_symbols_hdr ${PROJECT_BINARY_DIR}/caffe/include_symbols.hpp)  
+  set_source_files_properties(${caffe_export_hdr} ${caffe_symbols_hdr} PROPERTIES GENERATED TRUE)
+  
   caffe_source_group("Include"        GLOB "${root}/include/caffe/*.h*")
   caffe_source_group("Include\\Util"  GLOB "${root}/include/caffe/util/*.h*")
   caffe_source_group("Include"        GLOB "${PROJECT_BINARY_DIR}/caffe_config.h*")
+  caffe_source_group("Include"        GLOB "${caffe_export_hdr}")
+  if(MSVC AND NOT BUILD_SHARED_LIBS)
+    caffe_source_group("Include"        GLOB "${caffe_symbols_hdr}")
+  endif()
   caffe_source_group("Source"         GLOB "${root}/src/caffe/*.cpp")
   caffe_source_group("Source\\Util"   GLOB "${root}/src/caffe/util/*.cpp")
   caffe_source_group("Source\\Layers" GLOB "${root}/src/caffe/layers/*.cpp")
@@ -76,7 +96,13 @@ function(caffe_pickup_caffe_sources root)
   list(REMOVE_ITEM  srcs ${test_srcs})
 
   # adding headers to make the visible in some IDEs (Qt, VS, Xcode)
-  list(APPEND srcs ${hdrs} ${PROJECT_BINARY_DIR}/caffe_config.h)
+  list(APPEND srcs ${hdrs}
+                   ${PROJECT_BINARY_DIR}/caffe_config.h
+                   ${caffe_export_hdr}
+  )
+  if(MSVC AND NOT BUILD_SHARED_LIBS)
+    list(APPEND srcs ${caffe_symbols_hdr})
+  endif()
   list(APPEND test_srcs ${test_hdrs})
 
   # collect cuda files
@@ -88,21 +114,25 @@ function(caffe_pickup_caffe_sources root)
   file(GLOB_RECURSE proto_files ${root}/src/caffe/*.proto)
   list(APPEND srcs ${proto_files})
 
-  # convet to absolute paths
+  # convert to absolute paths
   caffe_convert_absolute_paths(srcs)
   caffe_convert_absolute_paths(cuda)
   caffe_convert_absolute_paths(test_srcs)
   caffe_convert_absolute_paths(test_cuda)
 
-  # propogate to parent scope
+  # propagate to parent scope
   set(srcs ${srcs} PARENT_SCOPE)
   set(cuda ${cuda} PARENT_SCOPE)
   set(test_srcs ${test_srcs} PARENT_SCOPE)
   set(test_cuda ${test_cuda} PARENT_SCOPE)
+  set(caffe_export_hdr_in ${caffe_export_hdr_in} PARENT_SCOPE)
+  set(caffe_export_hdr ${caffe_export_hdr} PARENT_SCOPE)
+  set(caffe_symbols_hdr ${caffe_symbols_hdr} PARENT_SCOPE)
+  
 endfunction()
 
 ################################################################################################
-# Short command for setting defeault target properties
+# Short command for setting default target properties
 # Usage:
 #   caffe_default_properties(<target>)
 function(caffe_default_properties target)
@@ -111,7 +141,7 @@ function(caffe_default_properties target)
     ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib"
     LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib"
     RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
-  # make sure we build all external depepdencies first
+  # make sure we build all external dependencies first
   if (DEFINED external_project_dependencies)
     add_dependencies(${target} ${external_project_dependencies})
   endif()
