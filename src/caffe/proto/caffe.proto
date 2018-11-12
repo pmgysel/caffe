@@ -322,7 +322,7 @@ message ParamSpec {
 // NOTE
 // Update the next available ID when you add a new LayerParameter field.
 //
-// LayerParameter next available layer-specific ID: 148 (last added:
+// LayerParameter next available layer-specific ID: 149 (last added:
 // quantization_param)
 message LayerParameter {
   optional string name = 1; // the layer name
